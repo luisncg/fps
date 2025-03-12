@@ -872,46 +872,59 @@ function showGameMessage(message) {
 
 // Collision Detection
 function setupCollisionDetection() {
-    // Store obstacle colliders
-    state.map.obstacles = obstacles.map(obstacle => {
-        const size = new THREE.Vector3();
-        const boundingBox = new THREE.Box3().setFromObject(obstacle);
-        boundingBox.getSize(size);
+    try {
+        // Store obstacle colliders
+        state.map.obstacles = obstacles.map(obstacle => {
+            const boundingBox = new THREE.Box3().setFromObject(obstacle);
+            const size = new THREE.Vector3();
+            boundingBox.getSize(size);
+            
+            return {
+                mesh: obstacle,
+                min: boundingBox.min,
+                max: boundingBox.max,
+                size: size
+            };
+        });
         
-        return {
-            mesh: obstacle,
-            min: boundingBox.min,
-            max: boundingBox.max,
-            size: size
-        };
-    });
+        console.log("Collision detection set up with " + state.map.obstacles.length + " obstacles");
+    } catch (error) {
+        console.error("Error setting up collision detection:", error);
+        state.map.obstacles = []; // Initialize to empty array on error
+    }
 }
 
 function checkCollisions(position, radius = 0.4) {
-    let colliding = false;
+    // First, check map boundaries
+    if (position.x - radius < state.map.bounds.minX || 
+        position.x + radius > state.map.bounds.maxX ||
+        position.z - radius < state.map.bounds.minZ || 
+        position.z + radius > state.map.bounds.maxZ) {
+        return true; // Colliding with boundary
+    }
+    
+    // Only check collisions with obstacles if we have them set up
+    if (!state.map.obstacles || state.map.obstacles.length === 0) {
+        return false;
+    }
     
     // Check collisions with obstacles
     for (const obstacle of state.map.obstacles) {
+        // Make sure obstacle has the properties we need
+        if (!obstacle.min || !obstacle.max) continue;
+        
         // Simple AABB collision
         if (position.x + radius > obstacle.min.x && 
             position.x - radius < obstacle.max.x &&
             position.z + radius > obstacle.min.z && 
             position.z - radius < obstacle.max.z) {
-            colliding = true;
-            break;
+            return true; // Colliding
         }
     }
     
-    // Check map boundaries
-    if (position.x - radius < state.map.bounds.minX || 
-        position.x + radius > state.map.bounds.maxX ||
-        position.z - radius < state.map.bounds.minZ || 
-        position.z + radius > state.map.bounds.maxZ) {
-        colliding = true;
-    }
-    
-    return colliding;
+    return false; // Not colliding
 }
+
 
 // Enhanced environment
 function enhanceEnvironment() {
@@ -931,7 +944,8 @@ function enhanceEnvironment() {
     // Add fog for atmosphere
     scene.fog = new THREE.Fog(0x88CCFF, 20, 60);
     
-    // Add more detailed ground (grass texture simulation)
+    // Comment out the detailed ground for now - keep using the simple ground
+    /*
     const groundSize = 50;
     const resolution = 64;
     const heightMap = generatePerlinHeightMap(resolution, resolution, 0.2);
@@ -991,6 +1005,7 @@ function enhanceEnvironment() {
     // Replace existing ground
     scene.remove(ground);
     scene.add(detailedGround);
+    */
 }
 
 // Utility to generate perlin noise height map
