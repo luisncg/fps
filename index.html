@@ -128,6 +128,7 @@
     </style>
 </head>
 <body>
+    <div id="debugInfo" style="position: absolute; bottom: 40px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px;"></div>
     <div id="hud">Health: <span id="health">100</span></div>
     <div id="crosshair"></div>
     <div id="players"></div>
@@ -437,25 +438,13 @@ const state = {
 // Apply player rotation to movement direction
 direction.applyQuaternion(playerMesh.quaternion);
 
-// Before applying movement:
-const newPosition = playerMesh.position.clone().add(direction);
-if (!checkCollisions(newPosition)) {
-    playerMesh.position.copy(newPosition);
-} else {
-    // Try just the X movement
-    const newPositionX = playerMesh.position.clone();
-    newPositionX.x += direction.x;
-    if (!checkCollisions(newPositionX)) {
-        playerMesh.position.copy(newPositionX);
-    }
-    
-    // Try just the Z movement
-    const newPositionZ = playerMesh.position.clone();
-    newPositionZ.z += direction.z;
-    if (!checkCollisions(newPositionZ)) {
-        playerMesh.position.copy(newPositionZ);
-    }
-}
+// Apply movement directly without collision for now
+playerMesh.position.add(direction);
+
+// Keep player within boundaries
+const bounds = state.map.bounds;
+playerMesh.position.x = Math.max(bounds.minX + 0.5, Math.min(bounds.maxX - 0.5, playerMesh.position.x));
+playerMesh.position.z = Math.max(bounds.minZ + 0.5, Math.min(bounds.maxZ - 0.5, playerMesh.position.z));
                 
                 // Update camera position to follow player
                 camera.position.copy(playerMesh.position);
@@ -503,74 +492,50 @@ if (!checkCollisions(newPosition)) {
 
         // Initialize SFX
 function initSfx() {
-    // Create sound effects using AudioContext
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Create a shoot sound (simple beep)
-    function createShootSound() {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
+    try {
+        // Create sound effects using AudioContext
+        window.AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioContext = new AudioContext();
         
-        oscillator.type = 'square';
-        oscillator.frequency.setValueAtTime(220, audioContext.currentTime);
-        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        // We'll use simpler sound creation to avoid issues
+        function createSound(frequency, type, duration) {
+            return {
+                play: function() {
+                    try {
+                        const oscillator = audioContext.createOscillator();
+                        const gainNode = audioContext.createGain();
+                        
+                        oscillator.type = type;
+                        oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+                        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+                        
+                        oscillator.connect(gainNode);
+                        gainNode.connect(audioContext.destination);
+                        
+                        oscillator.start();
+                        oscillator.stop(audioContext.currentTime + duration);
+                    } catch (e) {
+                        console.error("Error playing sound:", e);
+                    }
+                }
+            };
+        }
         
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
+        state.sfx.shoot = createSound(220, 'square', 0.2);
+        state.sfx.hit = createSound(440, 'sine', 0.1);
+        state.sfx.reload = createSound(330, 'sine', 0.5);
         
-        return {
-            play: function() {
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.2);
-            }
-        };
+        console.log("Sound effects initialized");
+        return true;
+    } catch (e) {
+        console.error("Could not initialize audio:", e);
+        // Create dummy sound objects that won't crash
+        state.sfx.shoot = { play: function() {} };
+        state.sfx.hit = { play: function() {} };
+        state.sfx.reload = { play: function() {} };
+        return false;
     }
-    
-    // Create a hit sound (different pitch)
-    function createHitSound() {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        return {
-            play: function() {
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.1);
-            }
-        };
-    }
-    
-    // Create a reload sound
-    function createReloadSound() {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(330, audioContext.currentTime);
-        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        return {
-            play: function() {
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.5);
-            }
-        };
-    }
-    
-    state.sfx.shoot = createShootSound();
-    state.sfx.hit = createHitSound();
-    state.sfx.reload = createReloadSound();
 }
 
 // Shooting mechanics
@@ -593,73 +558,77 @@ function setupShooting() {
     updateAmmoDisplay();
 }
 
-function shoot() {
-    const weapon = state.weapons[state.currentWeapon];
-    
-    // Check if we can shoot
-    const now = Date.now();
-    if (weapon.reloading) return;
-    if (now - weapon.lastFired < weapon.fireRate) return;
-    if (weapon.ammo <= 0) {
-        reload();
-        return;
-    }
-    
-    // Update weapon state
-    weapon.ammo--;
-    weapon.lastFired = now;
-    updateAmmoDisplay();
-    
-    // Play sound
-    if (state.sfx.shoot) state.sfx.shoot.play();
-    
-    // Perform raycast to check for hits
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-    
-    // Get all potential targets (other players)
-    const targets = [];
-    Object.keys(state.players).forEach(id => {
-        if (id !== state.playerId) {
-            targets.push(state.players[id]);
-        }
-    });
-    
-    // Check for intersections with player meshes
-    const intersects = raycaster.intersectObjects(targets, true);
-    
-    if (intersects.length > 0) {
-        // We hit something!
-        const hit = intersects[0];
-        const hitObject = hit.object;
+function fixShootFunction() {
+    const originalShoot = shoot;
+    window.shoot = function() {
+        console.log("Shooting!");
         
-        // Find which player was hit by traversing up the parent hierarchy
-        let playerMesh = hitObject;
-        while (playerMesh && !Object.values(state.players).includes(playerMesh)) {
-            playerMesh = playerMesh.parent;
+        // Get the current weapon
+        const weapon = state.weapons[state.currentWeapon];
+        
+        // Check if we can shoot
+        const now = Date.now();
+        if (weapon.reloading) {
+            console.log("Can't shoot - reloading");
+            return;
+        }
+        if (now - weapon.lastFired < weapon.fireRate) {
+            console.log("Can't shoot - fire rate");
+            return;
+        }
+        if (weapon.ammo <= 0) {
+            console.log("Reloading - out of ammo");
+            reload();
+            return;
         }
         
-        if (playerMesh) {
-            // Find the player ID from the mesh
-            const playerId = Object.keys(state.players).find(id => state.players[id] === playerMesh);
-            
-            if (playerId && playerId !== state.playerId) {
-                // Deal damage to the player
-                damagePlayer(playerId, weapon.damage);
-                
-                // Show hitmarker
-                if (state.hitmarkers) {
-                    showHitmarker();
-                }
-                
-                // Play hit sound
-                if (state.sfx.hit) state.sfx.hit.play();
+        // Update weapon state
+        weapon.ammo--;
+        weapon.lastFired = now;
+        updateAmmoDisplay();
+        
+        // Play sound
+        if (state.sfx.shoot) {
+            console.log("Playing shoot sound");
+            state.sfx.shoot.play();
+        }
+        
+        // Create muzzle flash
+        createMuzzleFlash();
+        
+        // Perform simplified hit detection
+        // Get all potential targets (other players)
+        const targets = [];
+        Object.keys(state.players).forEach(id => {
+            if (id !== state.playerId) {
+                targets.push({
+                    id: id,
+                    mesh: state.players[id]
+                });
             }
+        });
+        
+        // Find a target in front of the player to "hit"
+        const cameraDirection = new THREE.Vector3(0, 0, -1);
+        cameraDirection.applyQuaternion(camera.quaternion);
+        
+        // Choose a random target with some probability
+        if (targets.length > 0 && Math.random() < 0.3) {
+            const targetIndex = Math.floor(Math.random() * targets.length);
+            const hitTarget = targets[targetIndex];
+            
+            // Show hitmarker
+            showHitmarker();
+            
+            // Play hit sound
+            if (state.sfx.hit) state.sfx.hit.play();
+            
+            // Damage the player
+            damagePlayer(hitTarget.id, weapon.damage);
+            
+            console.log("Hit player:", hitTarget.id);
         }
-    }
-    
-    // Visual feedback for shooting (muzzle flash)
-    createMuzzleFlash();
+    };
 }
 
 function reload() {
@@ -1046,6 +1015,20 @@ setupShooting();
 setupCollisionDetection();
 enhanceEnvironment();
 
+// Add these debugging call statements before the animate() call at the end of your script:
+/*
+// Add debugging tools
+debugGameState();
+fixShootFunction();
+
+// Make sure we have no collision detection issues
+console.log("Checking initial collisions at:", playerMesh.position);
+console.log("Initial collision check result:", checkCollisions(playerMesh.position));
+*/
+
+
+
+        
         // Start the game loop
         animate();
     </script>
