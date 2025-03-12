@@ -46,12 +46,97 @@
             color: white;
             font-family: Arial, sans-serif;
         }
+
+#ammo {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 18px;
+}
+#hitmarker {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 30px;
+    height: 30px;
+    transform: translate(-50%, -50%) rotate(45deg);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+#hitmarker::before, #hitmarker::after {
+    content: '';
+    position: absolute;
+    background-color: rgba(255, 0, 0, 0.7);
+}
+#hitmarker::before {
+    width: 3px;
+    height: 30px;
+    left: 14px;
+}
+#hitmarker::after {
+    width: 30px;
+    height: 3px;
+    top: 14px;
+}
+#killFeed {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+#healthBar {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    width: 200px;
+    height: 20px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border: 2px solid #333;
+}
+#healthBarInner {
+    width: 100%;
+    height: 100%;
+    background-color: #3f3;
+    transition: width 0.3s;
+}
+#reloadIndicator {
+    position: absolute;
+    bottom: 40px;
+    right: 10px;
+    color: yellow;
+    font-family: Arial, sans-serif;
+    display: none;
+}
+#gameMessages {
+    position: absolute;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    text-shadow: 1px 1px 3px black;
+    font-size: 18px;
+}
+        
     </style>
 </head>
 <body>
     <div id="hud">Health: <span id="health">100</span></div>
     <div id="crosshair"></div>
     <div id="players"></div>
+    <div id="ammo">Ammo: <span id="ammoCount">10</span> / <span id="maxAmmo">10</span></div>
+<div id="hitmarker"></div>
+<div id="killFeed"></div>
+<div id="healthBar"><div id="healthBarInner"></div></div>
+<div id="reloadIndicator">Reloading...</div>
+<div id="gameMessages"></div>
 
     <!-- Include Three.js from CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -60,13 +145,44 @@
 
     <script>
         // Game state
-        const state = {
-            players: {},
-            playerId: null,
-            health: 100,
-            networkUpdateRate: 100, // ms
-            lastUpdate: 0
-        };
+// Game state
+const state = {
+    players: {},
+    playerId: null,
+    health: 100,
+    networkUpdateRate: 100, // ms
+    lastUpdate: 0,
+    // New properties start here
+    weapons: {
+        pistol: {
+            damage: 25,
+            ammo: 10,
+            maxAmmo: 10,
+            fireRate: 500,
+            reloadTime: 1500,
+            lastFired: 0,
+            reloading: false
+        }
+    },
+    currentWeapon: 'pistol',
+    kills: 0,
+    deaths: 0,
+    respawnTimer: 0,
+    godMode: false, // Brief invulnerability after respawn
+    hitmarkers: true,
+    map: {
+        obstacles: [],
+        bounds: {
+            minX: -25, maxX: 25,
+            minZ: -25, maxZ: 25
+        }
+    },
+    sfx: {
+        shoot: null,
+        hit: null,
+        reload: null
+    }
+};
 
         // Networking - Mock implementation for GitHub Pages (no actual server)
         // In a real implementation, you'd connect to a Socket.io server
@@ -318,9 +434,28 @@
                     direction.x += moveSpeed;
                 }
                 
-                // Apply player rotation to movement direction
-                direction.applyQuaternion(playerMesh.quaternion);
-                playerMesh.position.add(direction);
+// Apply player rotation to movement direction
+direction.applyQuaternion(playerMesh.quaternion);
+
+// Before applying movement:
+const newPosition = playerMesh.position.clone().add(direction);
+if (!checkCollisions(newPosition)) {
+    playerMesh.position.copy(newPosition);
+} else {
+    // Try just the X movement
+    const newPositionX = playerMesh.position.clone();
+    newPositionX.x += direction.x;
+    if (!checkCollisions(newPositionX)) {
+        playerMesh.position.copy(newPositionX);
+    }
+    
+    // Try just the Z movement
+    const newPositionZ = playerMesh.position.clone();
+    newPositionZ.z += direction.z;
+    if (!checkCollisions(newPositionZ)) {
+        playerMesh.position.copy(newPositionZ);
+    }
+}
                 
                 // Update camera position to follow player
                 camera.position.copy(playerMesh.position);
@@ -365,12 +500,536 @@
             playersDiv.innerHTML = html;
         }
 
+
+        // Initialize SFX
+function initSfx() {
+    // Create sound effects using AudioContext
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Create a shoot sound (simple beep)
+    function createShootSound() {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(220, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        return {
+            play: function() {
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.2);
+            }
+        };
+    }
+    
+    // Create a hit sound (different pitch)
+    function createHitSound() {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        return {
+            play: function() {
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.1);
+            }
+        };
+    }
+    
+    // Create a reload sound
+    function createReloadSound() {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(330, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        return {
+            play: function() {
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.5);
+            }
+        };
+    }
+    
+    state.sfx.shoot = createShootSound();
+    state.sfx.hit = createHitSound();
+    state.sfx.reload = createReloadSound();
+}
+
+// Shooting mechanics
+function setupShooting() {
+    // Add click event for shooting
+    document.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { // Left mouse button
+            shoot();
+        }
+    });
+    
+    // Add reload key
+    document.addEventListener('keydown', (e) => {
+        if (e.key.toLowerCase() === 'r') {
+            reload();
+        }
+    });
+    
+    // Update ammo display
+    updateAmmoDisplay();
+}
+
+function shoot() {
+    const weapon = state.weapons[state.currentWeapon];
+    
+    // Check if we can shoot
+    const now = Date.now();
+    if (weapon.reloading) return;
+    if (now - weapon.lastFired < weapon.fireRate) return;
+    if (weapon.ammo <= 0) {
+        reload();
+        return;
+    }
+    
+    // Update weapon state
+    weapon.ammo--;
+    weapon.lastFired = now;
+    updateAmmoDisplay();
+    
+    // Play sound
+    if (state.sfx.shoot) state.sfx.shoot.play();
+    
+    // Perform raycast to check for hits
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    
+    // Get all potential targets (other players)
+    const targets = [];
+    Object.keys(state.players).forEach(id => {
+        if (id !== state.playerId) {
+            targets.push(state.players[id]);
+        }
+    });
+    
+    // Check for intersections with player meshes
+    const intersects = raycaster.intersectObjects(targets, true);
+    
+    if (intersects.length > 0) {
+        // We hit something!
+        const hit = intersects[0];
+        const hitObject = hit.object;
+        
+        // Find which player was hit by traversing up the parent hierarchy
+        let playerMesh = hitObject;
+        while (playerMesh && !Object.values(state.players).includes(playerMesh)) {
+            playerMesh = playerMesh.parent;
+        }
+        
+        if (playerMesh) {
+            // Find the player ID from the mesh
+            const playerId = Object.keys(state.players).find(id => state.players[id] === playerMesh);
+            
+            if (playerId && playerId !== state.playerId) {
+                // Deal damage to the player
+                damagePlayer(playerId, weapon.damage);
+                
+                // Show hitmarker
+                if (state.hitmarkers) {
+                    showHitmarker();
+                }
+                
+                // Play hit sound
+                if (state.sfx.hit) state.sfx.hit.play();
+            }
+        }
+    }
+    
+    // Visual feedback for shooting (muzzle flash)
+    createMuzzleFlash();
+}
+
+function reload() {
+    const weapon = state.weapons[state.currentWeapon];
+    
+    // Check if we need to reload
+    if (weapon.ammo === weapon.maxAmmo || weapon.reloading) return;
+    
+    // Start reloading
+    weapon.reloading = true;
+    document.getElementById('reloadIndicator').style.display = 'block';
+    
+    // Play reload sound
+    if (state.sfx.reload) state.sfx.reload.play();
+    
+    // Set timeout to finish reloading
+    setTimeout(() => {
+        weapon.ammo = weapon.maxAmmo;
+        weapon.reloading = false;
+        updateAmmoDisplay();
+        document.getElementById('reloadIndicator').style.display = 'none';
+    }, weapon.reloadTime);
+}
+
+function updateAmmoDisplay() {
+    const weapon = state.weapons[state.currentWeapon];
+    document.getElementById('ammoCount').textContent = weapon.ammo;
+    document.getElementById('maxAmmo').textContent = weapon.maxAmmo;
+}
+
+function showHitmarker() {
+    const hitmarker = document.getElementById('hitmarker');
+    hitmarker.style.opacity = '1';
+    
+    // Hide hitmarker after a short time
+    setTimeout(() => {
+        hitmarker.style.opacity = '0';
+    }, 150);
+}
+
+function createMuzzleFlash() {
+    // Create a point light for muzzle flash
+    const muzzleLight = new THREE.PointLight(0xffaa00, 3, 3);
+    
+    // Position the light at the camera position + forward vector
+    const position = new THREE.Vector3(0, 0, -1);
+    position.applyQuaternion(camera.quaternion);
+    position.add(camera.position);
+    muzzleLight.position.copy(position);
+    
+    // Add to scene
+    scene.add(muzzleLight);
+    
+    // Remove after a short time
+    setTimeout(() => {
+        scene.remove(muzzleLight);
+    }, 50);
+}
+
+// Health and Damage System
+function damagePlayer(id, amount) {
+    if (id === state.playerId) {
+        // Local player damage
+        if (state.godMode) return;
+        
+        state.health -= amount;
+        updateHealthBar();
+        
+        // Check for death
+        if (state.health <= 0) {
+            handlePlayerDeath();
+        }
+    } else {
+        // Remote player damage (mock players)
+        const playerData = mockNetwork.otherPlayers[id];
+        if (playerData) {
+            playerData.health -= amount;
+            
+            // Check for kill
+            if (playerData.health <= 0) {
+                handlePlayerKill(id);
+            }
+        }
+    }
+}
+
+function updateHealthBar() {
+    const healthPercent = Math.max(0, state.health);
+    document.getElementById('healthBarInner').style.width = healthPercent + '%';
+    
+    // Update color based on health
+    let color = '#3f3';
+    if (state.health < 60) color = '#ff3';
+    if (state.health < 30) color = '#f33';
+    document.getElementById('healthBarInner').style.backgroundColor = color;
+    
+    // Update health text
+    document.getElementById('health').textContent = Math.max(0, Math.round(state.health));
+}
+
+function handlePlayerDeath() {
+    // Increment death count
+    state.deaths++;
+    
+    // Show death message
+    showGameMessage("You died! Respawning in 3 seconds...");
+    
+    // Hide player mesh
+    playerMesh.visible = false;
+    
+    // Start respawn timer
+    state.respawnTimer = 3000;
+    const respawnTime = Date.now() + state.respawnTimer;
+    
+    // Update respawn countdown
+    const respawnInterval = setInterval(() => {
+        const remaining = Math.ceil((respawnTime - Date.now()) / 1000);
+        if (remaining > 0) {
+            showGameMessage(`Respawning in ${remaining} seconds...`);
+        }
+    }, 1000);
+    
+    // Respawn after timer
+    setTimeout(() => {
+        respawnPlayer();
+        clearInterval(respawnInterval);
+    }, state.respawnTimer);
+}
+
+function respawnPlayer() {
+    // Reset health
+    state.health = 100;
+    updateHealthBar();
+    
+    // Reset position (random spawn)
+    const spawnX = (Math.random() - 0.5) * 40;
+    const spawnZ = (Math.random() - 0.5) * 40;
+    playerMesh.position.set(spawnX, 1, spawnZ);
+    
+    // Show player mesh
+    playerMesh.visible = true;
+    
+    // Show respawn message
+    showGameMessage("Respawned!");
+    
+    // Enable god mode briefly
+    state.godMode = true;
+    setTimeout(() => {
+        state.godMode = false;
+    }, 3000);
+}
+
+function handlePlayerKill(id) {
+    // Increment kill count
+    state.kills++;
+    
+    // Add to kill feed
+    addKillFeed(state.playerId, id);
+    
+    // Show kill message
+    showGameMessage(`You killed ${id}!`);
+    
+    // Respawn the mock player
+    respawnMockPlayer(id);
+}
+
+function respawnMockPlayer(id) {
+    // Reset health
+    mockNetwork.otherPlayers[id].health = 100;
+    
+    // Randomize position
+    const x = (Math.random() - 0.5) * 40;
+    const z = (Math.random() - 0.5) * 40;
+    mockNetwork.otherPlayers[id].position = { x, y: 1, z };
+    
+    // Update mesh
+    const playerMesh = state.players[id];
+    if (playerMesh) {
+        playerMesh.position.set(x, 1, z);
+    }
+}
+
+function addKillFeed(killerId, victimId) {
+    const killFeed = document.getElementById('killFeed');
+    const killEntry = document.createElement('div');
+    
+    // Format: Killer -> Victim
+    killEntry.textContent = `${killerId} ☠ ${victimId}`;
+    killEntry.style.color = '#ff9';
+    killEntry.style.marginBottom = '5px';
+    
+    // Add to kill feed
+    killFeed.appendChild(killEntry);
+    
+    // Remove after a few seconds
+    setTimeout(() => {
+        killFeed.removeChild(killEntry);
+    }, 5000);
+}
+
+function showGameMessage(message) {
+    const messagesDiv = document.getElementById('gameMessages');
+    messagesDiv.textContent = message;
+    
+    // Clear after a few seconds
+    setTimeout(() => {
+        messagesDiv.textContent = '';
+    }, 3000);
+}
+
+// Collision Detection
+function setupCollisionDetection() {
+    // Store obstacle colliders
+    state.map.obstacles = obstacles.map(obstacle => {
+        const size = new THREE.Vector3();
+        const boundingBox = new THREE.Box3().setFromObject(obstacle);
+        boundingBox.getSize(size);
+        
+        return {
+            mesh: obstacle,
+            min: boundingBox.min,
+            max: boundingBox.max,
+            size: size
+        };
+    });
+}
+
+function checkCollisions(position, radius = 0.4) {
+    let colliding = false;
+    
+    // Check collisions with obstacles
+    for (const obstacle of state.map.obstacles) {
+        // Simple AABB collision
+        if (position.x + radius > obstacle.min.x && 
+            position.x - radius < obstacle.max.x &&
+            position.z + radius > obstacle.min.z && 
+            position.z - radius < obstacle.max.z) {
+            colliding = true;
+            break;
+        }
+    }
+    
+    // Check map boundaries
+    if (position.x - radius < state.map.bounds.minX || 
+        position.x + radius > state.map.bounds.maxX ||
+        position.z - radius < state.map.bounds.minZ || 
+        position.z + radius > state.map.bounds.maxZ) {
+        colliding = true;
+    }
+    
+    return colliding;
+}
+
+// Enhanced environment
+function enhanceEnvironment() {
+    // Add skybox
+    const skyboxGeometry = new THREE.BoxGeometry(500, 500, 500);
+    const skyboxMaterials = [
+        new THREE.MeshBasicMaterial({ color: 0x88CCFF, side: THREE.BackSide }), // right
+        new THREE.MeshBasicMaterial({ color: 0x88CCFF, side: THREE.BackSide }), // left
+        new THREE.MeshBasicMaterial({ color: 0x99DDFF, side: THREE.BackSide }), // top
+        new THREE.MeshBasicMaterial({ color: 0x88AA66, side: THREE.BackSide }), // bottom
+        new THREE.MeshBasicMaterial({ color: 0x88CCFF, side: THREE.BackSide }), // front
+        new THREE.MeshBasicMaterial({ color: 0x88CCFF, side: THREE.BackSide })  // back
+    ];
+    const skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterials);
+    scene.add(skybox);
+    
+    // Add fog for atmosphere
+    scene.fog = new THREE.Fog(0x88CCFF, 20, 60);
+    
+    // Add more detailed ground (grass texture simulation)
+    const groundSize = 50;
+    const resolution = 64;
+    const heightMap = generatePerlinHeightMap(resolution, resolution, 0.2);
+    
+    const detailedGroundGeometry = new THREE.PlaneGeometry(
+        groundSize, groundSize, resolution - 1, resolution - 1
+    );
+    
+    // Apply height map to vertices
+    const vertices = detailedGroundGeometry.attributes.position.array;
+    for (let i = 0; i < resolution * resolution; i++) {
+        const vertexIndex = i * 3 + 1; // y-coordinate (1st index is x, 2nd is y, 3rd is z)
+        vertices[vertexIndex] = heightMap[i] * 0.5; // Scale height
+    }
+    
+    // Recalculate normals
+    detailedGroundGeometry.computeVertexNormals();
+    
+    const groundColors = [
+        new THREE.Color(0x1a6e1a), // Darker green
+        new THREE.Color(0x2d8a2d), // Medium green
+        new THREE.Color(0x3da63d)  // Lighter green
+    ];
+    
+    // Create color array for vertices
+    const colors = [];
+    for (let i = 0; i < vertices.length / 3; i++) {
+        // Use height to determine color (higher = lighter)
+        const height = vertices[i * 3 + 1];
+        const colorIndex = Math.min(2, Math.floor((height + 0.25) * 6));
+        const color = groundColors[colorIndex] || groundColors[0];
+        
+        // Slight random variation
+        const r = color.r * (0.95 + Math.random() * 0.1);
+        const g = color.g * (0.95 + Math.random() * 0.1);
+        const b = color.b * (0.95 + Math.random() * 0.1);
+        
+        colors.push(r, g, b);
+    }
+    
+    // Add colors to geometry
+    detailedGroundGeometry.setAttribute(
+        'color',
+        new THREE.Float32BufferAttribute(colors, 3)
+    );
+    
+    const detailedGroundMaterial = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.9,
+        metalness: 0.1
+    });
+    
+    const detailedGround = new THREE.Mesh(detailedGroundGeometry, detailedGroundMaterial);
+    detailedGround.rotation.x = -Math.PI / 2;
+    detailedGround.receiveShadow = true;
+    
+    // Replace existing ground
+    scene.remove(ground);
+    scene.add(detailedGround);
+}
+
+// Utility to generate perlin noise height map
+function generatePerlinHeightMap(width, height, scale) {
+    const map = [];
+    
+    // Simple pseudo-perlin noise function
+    for (let z = 0; z < height; z++) {
+        for (let x = 0; x < width; x++) {
+            // Multiple frequencies of noise
+            const nx = x / width - 0.5;
+            const nz = z / height - 0.5;
+            
+            // Base noise
+            let val = Math.sin(nx * 10 * scale) * Math.sin(nz * 10 * scale) * 0.5;
+            // Add detail
+            val += Math.sin(nx * 20 * scale) * Math.sin(nz * 20 * scale) * 0.25;
+            // Add more detail
+            val += Math.sin(nx * 40 * scale) * Math.sin(nz * 40 * scale) * 0.125;
+            
+            map.push(val);
+        }
+    }
+    
+    return map;
+}
+
         // Handle window resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
+
+
+initSfx();
+setupShooting();
+setupCollisionDetection();
+enhanceEnvironment();
 
         // Start the game loop
         animate();
