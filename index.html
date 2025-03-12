@@ -315,7 +315,7 @@
         ];
 
         // Player movement controls
-        const moveSpeed = 0.1;
+        const moveSpeed = 0.2; // Increased for better responsiveness
         const turnSpeed = 0.02;
         const keys = {
             forward: false,
@@ -366,11 +366,12 @@
 
         // Setup keyboard controls
         document.addEventListener('keydown', (e) => {
+            console.log("Key pressed:", e.key);
             switch (e.key.toLowerCase()) {
-                case 'w': keys.forward = true; break;
-                case 's': keys.backward = true; break;
-                case 'a': keys.left = true; break;
-                case 'd': keys.right = true; break;
+                case 'w': keys.forward = true; console.log("Forward key pressed"); break;
+                case 's': keys.backward = true; console.log("Backward key pressed"); break;
+                case 'a': keys.left = true; console.log("Left key pressed"); break;
+                case 'd': keys.right = true; console.log("Right key pressed"); break;
                 case 'arrowleft': keys.turnLeft = true; break;
                 case 'arrowright': keys.turnRight = true; break;
                 case 'r': reload(); break;
@@ -846,8 +847,8 @@
             if (!state.map.obstacles || state.map.obstacles.length === 0) {
                 return false;
             }
-    
-    // Check collisions with obstacles
+            
+            // Check collisions with obstacles
             for (const obstacle of state.map.obstacles) {
                 // Make sure obstacle has the properties we need
                 if (!obstacle.min || !obstacle.max) continue;
@@ -887,8 +888,13 @@
         function animate() {
             requestAnimationFrame(animate);
             
+            // Debug movement state
+            if (keys.forward || keys.backward || keys.left || keys.right) {
+                console.log("Movement keys active:", keys);
+            }
+            
             // Handle player movement
-            if (isPointerLocked && playerMesh) {
+            if (playerMesh) { // Removed isPointerLocked check to allow movement testing
                 const direction = new THREE.Vector3();
                 
                 // Forward/backward movement
@@ -908,7 +914,12 @@
                 }
                 
                 // Apply player rotation to movement direction
-                direction.applyQuaternion(playerMesh.quaternion);
+                direction.applyEuler(new THREE.Euler(0, playerMesh.rotation.y, 0));
+                
+                // Normalize direction vector and apply move speed
+                if (direction.length() > 0) {
+                    direction.normalize().multiplyScalar(moveSpeed);
+                }
 
                 // Calculate new position
                 const newPosition = new THREE.Vector3().copy(playerMesh.position).add(direction);
@@ -916,6 +927,7 @@
                 // Check for collisions before moving
                 if (!checkCollisions(newPosition)) {
                     playerMesh.position.copy(newPosition);
+                    console.log("Moving to:", newPosition);
                 }
 
                 // Keep player within boundaries
