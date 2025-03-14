@@ -3,1028 +3,614 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple 3D FPS Multiplayer</title>
+    <title>Simple Three.js Multiplayer FPS</title>
     <style>
-        body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
-        #hud {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
             font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            text-align: center;
+            z-index: 100;
+        }
+        #game-ui {
+            position: absolute;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
+            display: none;
         }
         #crosshair {
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 20px;
-            height: 20px;
             transform: translate(-50%, -50%);
-            pointer-events: none;
+            color: white;
+            font-size: 20px;
         }
-        #crosshair::before, #crosshair::after {
-            content: '';
-            position: absolute;
-            background-color: rgba(255, 255, 255, 0.7);
-        }
-        #crosshair::before {
-            width: 2px;
-            height: 20px;
-            left: 9px;
-        }
-        #crosshair::after {
-            width: 20px;
-            height: 2px;
-            top: 9px;
-        }
-        #players {
+        #players-list {
             position: absolute;
             top: 10px;
             right: 10px;
-            color: white;
-            font-family: Arial, sans-serif;
-        }
-        #ammo {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            color: white;
-            font-family: Arial, sans-serif;
-            font-size: 18px;
-        }
-        #hitmarker {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 30px;
-            height: 30px;
-            transform: translate(-50%, -50%) rotate(45deg);
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-        #hitmarker::before, #hitmarker::after {
-            content: '';
-            position: absolute;
-            background-color: rgba(255, 0, 0, 0.7);
-        }
-        #hitmarker::before {
-            width: 3px;
-            height: 30px;
-            left: 14px;
-        }
-        #hitmarker::after {
-            width: 30px;
-            height: 3px;
-            top: 14px;
-        }
-        #killFeed {
-            position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-        }
-        #healthBar {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            width: 200px;
-            height: 20px;
             background-color: rgba(0, 0, 0, 0.5);
-            border: 2px solid #333;
-        }
-        #healthBarInner {
-            width: 100%;
-            height: 100%;
-            background-color: #3f3;
-            transition: width 0.3s;
-        }
-        #reloadIndicator {
-            position: absolute;
-            bottom: 40px;
-            right: 10px;
-            color: yellow;
-            font-family: Arial, sans-serif;
-            display: none;
-        }
-        #gameMessages {
-            position: absolute;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
+            padding: 10px;
+            border-radius: 5px;
             color: white;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            text-shadow: 1px 1px 3px black;
-            font-size: 18px;
         }
-        #debugInfo {
-            position: absolute; 
-            bottom: 40px; 
-            left: 10px; 
-            color: white; 
-            background: rgba(0,0,0,0.5); 
-            padding: 5px;
+        #room-code-display {
+            font-size: 24px;
+            margin: 15px 0;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+        #room-code {
+            font-weight: bold;
+            color: #4CAF50;
+            font-size: 32px;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        input {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            border: none;
         }
     </style>
 </head>
 <body>
-    <div id="debugInfo"></div>
-    <div id="hud">Health: <span id="health">100</span></div>
-    <div id="crosshair"></div>
-    <div id="players"></div>
-    <div id="ammo">Ammo: <span id="ammoCount">10</span> / <span id="maxAmmo">10</span></div>
-    <div id="hitmarker"></div>
-    <div id="killFeed"></div>
-    <div id="healthBar"><div id="healthBarInner"></div></div>
-    <div id="reloadIndicator">Reloading...</div>
-    <div id="gameMessages"></div>
+    <div id="menu">
+        <h2>Simple FPS Game</h2>
+        <div id="host-section">
+            <button id="host-btn">Host Game</button>
+            <div id="room-code-display" style="display: none;">
+                Room Code: <span id="room-code"></span>
+            </div>
+        </div>
+        <div id="join-section">
+            <input type="text" id="join-code" placeholder="Enter Room Code">
+            <button id="join-btn">Join Game</button>
+        </div>
+    </div>
 
-    <!-- Include Three.js from CDN -->
+    <div id="game-ui">
+        <div id="crosshair">+</div>
+        <div id="players-list"></div>
+    </div>
+
+    <!-- Import Three.js and PeerJS from CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- Include Socket.io for networking -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
 
     <script>
-        // Game state
-        const state = {
-            players: {},
-            playerId: null,
-            health: 100,
-            networkUpdateRate: 100, // ms
-            lastUpdate: 0,
-            // Weapon properties
-            weapons: {
-                pistol: {
-                    damage: 25,
-                    ammo: 10,
-                    maxAmmo: 10,
-                    fireRate: 500,
-                    reloadTime: 1500,
-                    lastFired: 0,
-                    reloading: false
-                }
-            },
-            currentWeapon: 'pistol',
-            kills: 0,
-            deaths: 0,
-            respawnTimer: 0,
-            godMode: false, // Brief invulnerability after respawn
-            hitmarkers: true,
-            map: {
-                obstacles: [],
-                bounds: {
-                    minX: -25, maxX: 25,
-                    minZ: -25, maxZ: 25
-                }
-            },
-            sfx: {
-                shoot: null,
-                hit: null,
-                reload: null
+        // Game variables
+        let scene, camera, renderer;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let velocity = new THREE.Vector3();
+        let direction = new THREE.Vector3();
+        let playerHeight = 1.8;
+        let players = {};
+        let myId = null;
+        let peer = null;
+        let connections = {};
+        let hostConnection = null;
+        let isHost = false;
+        let playerColors = {};
+        let playerMeshes = {};
+
+        // DOM Elements
+        const menu = document.getElementById('menu');
+        const gameUI = document.getElementById('game-ui');
+        const hostBtn = document.getElementById('host-btn');
+        const joinBtn = document.getElementById('join-btn');
+        const roomCodeDisplay = document.getElementById('room-code-display');
+        const roomCodeSpan = document.getElementById('room-code');
+        const joinCodeInput = document.getElementById('join-code');
+        const playersList = document.getElementById('players-list');
+
+        // Initialize Three.js scene
+        function initScene() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb); // Sky blue
+            
+            // Add lighting
+            const ambientLight = new THREE.AmbientLight(0x606060); // Brighter ambient light
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+            
+            // Create ground
+            const groundGeometry = new THREE.PlaneGeometry(200, 200);
+            const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x3a7e4e });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = 0;
+            scene.add(ground);
+            
+            // Add some cubes as obstacles
+            for (let i = 0; i < 20; i++) {
+                const geometry = new THREE.BoxGeometry(2, 2, 2);
+                const material = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+                const cube = new THREE.Mesh(geometry, material);
+                cube.position.x = Math.random() * 80 - 40;
+                cube.position.y = 1;
+                cube.position.z = Math.random() * 80 - 40;
+                scene.add(cube);
             }
-        };
-
-        // Networking - Mock implementation for GitHub Pages (no actual server)
-        const mockNetwork = {
-            connected: false,
-            otherPlayers: {},
-            connect() {
-                this.connected = true;
-                // Generate a random player ID
-                state.playerId = 'player_' + Math.floor(Math.random() * 10000);
-                console.log('Connected with ID:', state.playerId);
-                
-                // Simulate other players joining
-                this.spawnMockPlayers();
-                
-                // Return a mock socket object
-                return {
-                    emit: (event, data) => {
-                        // Mock server-side logic
-                        if (event === 'playerUpdate') {
-                            // Update mock players based on this player's movement
-                            this.updateMockPlayers(data);
-                        }
-                    },
-                    on: (event, callback) => {
-                        // We don't need to implement this for the mock
-                    }
-                };
-            },
-            spawnMockPlayers() {
-                // Create 3 mock players at random positions
-                for (let i = 0; i < 3; i++) {
-                    const playerId = 'mock_' + i;
-                    const x = (Math.random() - 0.5) * 20;
-                    const z = (Math.random() - 0.5) * 20;
-                    
-                    this.otherPlayers[playerId] = {
-                        position: { x, y: 1, z },
-                        rotation: { y: Math.random() * Math.PI * 2 },
-                        health: 100,
-                        lastMove: Date.now()
-                    };
-                    
-                    // Add player to the scene
-                    createPlayerMesh(playerId, x, 1, z);
-                }
-            },
-            updateMockPlayers(playerData) {
-                // Move mock players randomly
-                Object.keys(this.otherPlayers).forEach(id => {
-                    const player = this.otherPlayers[id];
-                    
-                    // Only move sometimes to make it feel more natural
-                    if (Math.random() > 0.7) {
-                        // Random movement
-                        player.position.x += (Math.random() - 0.5) * 0.2;
-                        player.position.z += (Math.random() - 0.5) * 0.2;
-                        player.rotation.y += (Math.random() - 0.5) * 0.1;
-                        
-                        // Update the mesh position
-                        const mesh = state.players[id];
-                        if (mesh) {
-                            mesh.position.set(player.position.x, player.position.y, player.position.z);
-                            mesh.rotation.y = player.rotation.y;
-                        }
-                    }
-                });
-            }
-        };
-
-        // Three.js setup
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x87CEEB); // Set sky color to avoid black screen
-        document.body.appendChild(renderer.domElement);
-
-        // Camera initial position
-        camera.position.set(0, 1.6, 0); // Height of average person
-        
-        // Add ambient light
-        const ambientLight = new THREE.AmbientLight(0x606060);
-        scene.add(ambientLight);
-        
-        // Add directional light (sun)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(10, 10, 10);
-        scene.add(directionalLight);
-
-        // Create ground plane
-        const groundGeometry = new THREE.PlaneGeometry(50, 50);
-        const groundMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x1a6e1a,
-            roughness: 0.8,
-            metalness: 0.2
-        });
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-        ground.receiveShadow = true;
-        scene.add(ground);
-        
-        // Add some obstacles
-        function createObstacle(x, y, z, width, height, depth) {
-            const geometry = new THREE.BoxGeometry(width, height, depth);
-            const material = new THREE.MeshStandardMaterial({ 
-                color: 0x8B4513,
-                roughness: 0.7 
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            // Setup camera controls
+            setupCameraControls();
+            
+            // Create renderer with better settings
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: true,
+                powerPreference: "high-performance",
+                precision: "highp"
             });
-            const obstacle = new THREE.Mesh(geometry, material);
-            obstacle.position.set(x, y, z);
-            obstacle.castShadow = true;
-            obstacle.receiveShadow = true;
-            scene.add(obstacle);
-            return obstacle;
-        }
-        
-        // Create some boxes around the scene
-        const obstacles = [
-            createObstacle(-5, 1, -5, 2, 2, 2),
-            createObstacle(5, 1, 5, 2, 2, 2),
-            createObstacle(-5, 1, 5, 2, 2, 2),
-            createObstacle(5, 1, -5, 2, 2, 2),
-            createObstacle(0, 1, 0, 3, 2, 3)
-        ];
-
-        // Player movement controls
-        const moveSpeed = 0.2; // Increased for better responsiveness
-        const turnSpeed = 0.02;
-        const keys = {
-            forward: false,
-            backward: false,
-            left: false,
-            right: false,
-            turnLeft: false,
-            turnRight: false
-        };
-
-        // Player mesh creation function
-        function createPlayerMesh(id, x, y, z) {
-            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.8, 0.8);
-            const headGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
             
-            const bodyMaterial = new THREE.MeshStandardMaterial({ 
-                color: id === state.playerId ? 0x3333ff : 0xff3333,
-                roughness: 0.7 
-            });
-            const headMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xffcc99,
-                roughness: 0.5 
-            });
+            // Add event listeners
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('click', onMouseClick);
+            window.addEventListener('resize', onWindowResize);
             
-            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            const head = new THREE.Mesh(headGeometry, headMaterial);
-            
-            head.position.y = 1.0; // Position head above body
-            
-            const player = new THREE.Group();
-            player.add(body);
-            player.add(head);
-            
-            player.position.set(x, y, z);
-            scene.add(player);
-            
-            // Store reference to player mesh
-            state.players[id] = player;
-            
-            return player;
-        }
-        
-        // Create player mesh for local player
-        let playerMesh;
-        
-        // Connect to mock network
-        let socket;
-
-        // Setup keyboard controls
-        document.addEventListener('keydown', (e) => {
-            console.log("Key pressed:", e.key);
-            switch (e.key.toLowerCase()) {
-                case 'w': keys.forward = true; console.log("Forward key pressed"); break;
-                case 's': keys.backward = true; console.log("Backward key pressed"); break;
-                case 'a': keys.left = true; console.log("Left key pressed"); break;
-                case 'd': keys.right = true; console.log("Right key pressed"); break;
-                case 'arrowleft': keys.turnLeft = true; break;
-                case 'arrowright': keys.turnRight = true; break;
-                case 'r': reload(); break;
-            }
-        });
-
-        document.addEventListener('keyup', (e) => {
-            switch (e.key.toLowerCase()) {
-                case 'w': keys.forward = false; break;
-                case 's': keys.backward = false; break;
-                case 'a': keys.left = false; break;
-                case 'd': keys.right = false; break;
-                case 'arrowleft': keys.turnLeft = false; break;
-                case 'arrowright': keys.turnRight = false; break;
-            }
-        });
-
-        // Mouse look
-        let mouseX = 0;
-        let mouseY = 0;
-        let isPointerLocked = false;
-
-        document.addEventListener('click', () => {
-            if (!isPointerLocked) {
+            // Lock pointer when clicking on the canvas
+            renderer.domElement.addEventListener('click', () => {
                 renderer.domElement.requestPointerLock();
-            } else {
-                shoot();
-            }
-        });
-
-        document.addEventListener('pointerlockchange', () => {
-            isPointerLocked = document.pointerLockElement === renderer.domElement;
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (isPointerLocked) {
-                mouseX = e.movementX * 0.002;
-                mouseY = e.movementY * 0.002;
-                
-                // Rotate player based on mouse X
-                if (playerMesh) {
-                    playerMesh.rotation.y -= mouseX;
-                }
-                
-                // Limit camera up/down rotation
-                camera.rotation.x -= mouseY;
-                camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-            }
-        });
-
-        // Initialize SFX
-        function initSfx() {
-            try {
-                // Create sound effects using AudioContext
-                window.AudioContext = window.AudioContext || window.webkitAudioContext;
-                const audioContext = new AudioContext();
-                
-                // We'll use simpler sound creation to avoid issues
-                function createSound(frequency, type, duration) {
-                    return {
-                        play: function() {
-                            try {
-                                const oscillator = audioContext.createOscillator();
-                                const gainNode = audioContext.createGain();
-                                
-                                oscillator.type = type;
-                                oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
-                                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-                                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-                                
-                                oscillator.connect(gainNode);
-                                gainNode.connect(audioContext.destination);
-                                
-                                oscillator.start();
-                                oscillator.stop(audioContext.currentTime + duration);
-                            } catch (e) {
-                                console.error("Error playing sound:", e);
-                            }
-                        }
-                    };
-                }
-                
-                state.sfx.shoot = createSound(220, 'square', 0.2);
-                state.sfx.hit = createSound(440, 'sine', 0.1);
-                state.sfx.reload = createSound(330, 'sine', 0.5);
-                
-                console.log("Sound effects initialized");
-                return true;
-            } catch (e) {
-                console.error("Could not initialize audio:", e);
-                // Create dummy sound objects that won't crash
-                state.sfx.shoot = { play: function() {} };
-                state.sfx.hit = { play: function() {} };
-                state.sfx.reload = { play: function() {} };
-                return false;
-            }
-        }
-
-        // Shooting mechanics
-        function shoot() {
-            console.log("Shooting attempt");
-            
-            // Get the current weapon
-            const weapon = state.weapons[state.currentWeapon];
-            
-            // Check if we can shoot
-            const now = Date.now();
-            if (weapon.reloading) {
-                console.log("Can't shoot - reloading");
-                return;
-            }
-            if (now - weapon.lastFired < weapon.fireRate) {
-                console.log("Can't shoot - fire rate");
-                return;
-            }
-            if (weapon.ammo <= 0) {
-                console.log("Reloading - out of ammo");
-                reload();
-                return;
-            }
-            
-            // Update weapon state
-            weapon.ammo--;
-            weapon.lastFired = now;
-            updateAmmoDisplay();
-            
-            // Play sound
-            if (state.sfx && state.sfx.shoot) {
-                try {
-                    state.sfx.shoot.play();
-                } catch (e) {
-                    console.error("Error playing sound:", e);
-                }
-            }
-            
-            // Visual feedback
-            createMuzzleFlash();
-            
-            // Set up hit detection logic
-            const targets = [];
-            Object.keys(state.players).forEach(id => {
-                if (id !== state.playerId && state.players[id]) {
-                    targets.push({
-                        id: id,
-                        mesh: state.players[id]
-                    });
-                }
             });
             
-            // Create a forward-facing vector
-            const cameraDirection = new THREE.Vector3(0, 0, -1);
-            cameraDirection.applyQuaternion(camera.quaternion);
-            
-            // Simplified hit detection - hit enemy if looking in their direction
-            let hitSomething = false;
-            
-            // First try raycasting for more accurate hits
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            
-            // Get all potential targets as an array
-            const targetMeshes = [];
-            targets.forEach(target => {
-                if (target.mesh) targetMeshes.push(target.mesh);
-            });
-            
-            if (targetMeshes.length > 0) {
-                // Check for intersections with meshes
-                const intersects = raycaster.intersectObjects(targetMeshes, true);
-                
-                if (intersects.length > 0) {
-                    // Find which player was hit
-                    const hitObject = intersects[0].object;
-                    let hitMesh = hitObject;
-                    
-                    // Traverse up to find parent that is a player mesh
-                    while (hitMesh && hitMesh.parent && !Object.values(state.players).includes(hitMesh)) {
-                        hitMesh = hitMesh.parent;
-                    }
-                    
-                    if (hitMesh && Object.values(state.players).includes(hitMesh)) {
-                        // Find the player ID
-                        const hitPlayerId = Object.keys(state.players).find(id => state.players[id] === hitMesh);
-                        
-                        if (hitPlayerId) {
-                            // Hit successful
-                            hitSomething = true;
-                            showHitmarker();
-                            
-                            // Play hit sound
-                            if (state.sfx && state.sfx.hit) {
-                                try {
-                                    state.sfx.hit.play();
-                                } catch(e) {
-                                    console.error("Error playing hit sound:", e);
-                                }
-                            }
-                            
-                            // Damage the player
-                            damagePlayer(hitPlayerId, weapon.damage);
-                            console.log("Hit player:", hitPlayerId);
-                        }
-                    }
-                }
-            }
-            
-            // If raycasting didn't hit, fall back to simplified logic
-            if (!hitSomething && targets.length > 0 && Math.random() < 0.3) {
-                // Choose a random target
-                const targetIndex = Math.floor(Math.random() * targets.length);
-                const hitTarget = targets[targetIndex];
-                
-                // Show hitmarker
-                showHitmarker();
-                
-                // Play hit sound
-                if (state.sfx && state.sfx.hit) {
-                    try {
-                        state.sfx.hit.play();
-                    } catch(e) {
-                        console.error("Error playing hit sound:", e);
-                    }
-                }
-                
-                // Damage the player
-                damagePlayer(hitTarget.id, weapon.damage);
-                console.log("Hit player (random):", hitTarget.id);
-            }
+            // Start animation loop
+            animate();
         }
-
-        function reload() {
-            const weapon = state.weapons[state.currentWeapon];
+        
+        // Create a player mesh
+        function createPlayerMesh(id, color = 0xff0000) {
+            const group = new THREE.Group();
             
-            // Check if we need to reload
-            if (weapon.ammo === weapon.maxAmmo || weapon.reloading) return;
+            // Body
+            const bodyGeometry = new THREE.BoxGeometry(1, 1.5, 1);
+            const bodyMaterial = new THREE.MeshLambertMaterial({ color: color });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.75;
+            group.add(body);
             
-            // Start reloading
-            weapon.reloading = true;
-            document.getElementById('reloadIndicator').style.display = 'block';
-            
-            // Play reload sound
-            if (state.sfx.reload) state.sfx.reload.play();
-            
-            // Set timeout to finish reloading
-            setTimeout(() => {
-                weapon.ammo = weapon.maxAmmo;
-                weapon.reloading = false;
-                updateAmmoDisplay();
-                document.getElementById('reloadIndicator').style.display = 'none';
-            }, weapon.reloadTime);
-        }
-
-        function updateAmmoDisplay() {
-            const weapon = state.weapons[state.currentWeapon];
-            document.getElementById('ammoCount').textContent = weapon.ammo;
-            document.getElementById('maxAmmo').textContent = weapon.maxAmmo;
-        }
-
-        function showHitmarker() {
-            const hitmarker = document.getElementById('hitmarker');
-            hitmarker.style.opacity = '1';
-            
-            // Hide hitmarker after a short time
-            setTimeout(() => {
-                hitmarker.style.opacity = '0';
-            }, 150);
-        }
-
-        function createMuzzleFlash() {
-            // Create a point light for muzzle flash
-            const muzzleLight = new THREE.PointLight(0xffaa00, 3, 3);
-            
-            // Position the light at the camera position + forward vector
-            const position = new THREE.Vector3(0, 0, -1);
-            position.applyQuaternion(camera.quaternion);
-            position.add(camera.position);
-            muzzleLight.position.copy(position);
+            // Head
+            const headGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+            const headMaterial = new THREE.MeshLambertMaterial({ color: color });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.7;
+            group.add(head);
             
             // Add to scene
-            scene.add(muzzleLight);
-            
-            // Remove after a short time
-            setTimeout(() => {
-                scene.remove(muzzleLight);
-            }, 50);
-        }
-
-        // Health and Damage System
-        function damagePlayer(id, amount) {
-            if (id === state.playerId) {
-                // Local player damage
-                if (state.godMode) return;
-                
-                state.health -= amount;
-                updateHealthBar();
-                
-                // Check for death
-                if (state.health <= 0) {
-                    handlePlayerDeath();
-                }
-            } else {
-                // Remote player damage (mock players)
-                const playerData = mockNetwork.otherPlayers[id];
-                if (playerData) {
-                    playerData.health -= amount;
-                    
-                    // Check for kill
-                    if (playerData.health <= 0) {
-                        handlePlayerKill(id);
-                    }
-                }
-            }
-        }
-
-        function updateHealthBar() {
-            const healthPercent = Math.max(0, state.health);
-            document.getElementById('healthBarInner').style.width = healthPercent + '%';
-            
-            // Update color based on health
-            let color = '#3f3';
-            if (state.health < 60) color = '#ff3';
-            if (state.health < 30) color = '#f33';
-            document.getElementById('healthBarInner').style.backgroundColor = color;
-            
-            // Update health text
-            document.getElementById('health').textContent = Math.max(0, Math.round(state.health));
-        }
-
-        function handlePlayerDeath() {
-            // Increment death count
-            state.deaths++;
-            
-            // Show death message
-            showGameMessage("You died! Respawning in 3 seconds...");
-            
-            // Hide player mesh
-            playerMesh.visible = false;
-            
-            // Start respawn timer
-            state.respawnTimer = 3000;
-            const respawnTime = Date.now() + state.respawnTimer;
-            
-            // Update respawn countdown
-            const respawnInterval = setInterval(() => {
-                const remaining = Math.ceil((respawnTime - Date.now()) / 1000);
-                if (remaining > 0) {
-                    showGameMessage(`Respawning in ${remaining} seconds...`);
-                }
-            }, 1000);
-            
-            // Respawn after timer
-            setTimeout(() => {
-                respawnPlayer();
-                clearInterval(respawnInterval);
-            }, state.respawnTimer);
-        }
-
-        function respawnPlayer() {
-            // Reset health
-            state.health = 100;
-            updateHealthBar();
-            
-            // Reset position (random spawn)
-            const spawnX = (Math.random() - 0.5) * 40;
-            const spawnZ = (Math.random() - 0.5) * 40;
-            playerMesh.position.set(spawnX, 1, spawnZ);
-            
-            // Show player mesh
-            playerMesh.visible = true;
-            
-            // Show respawn message
-            showGameMessage("Respawned!");
-            
-            // Enable god mode briefly
-            state.godMode = true;
-            setTimeout(() => {
-                state.godMode = false;
-            }, 3000);
-        }
-
-        function handlePlayerKill(id) {
-            // Increment kill count
-            state.kills++;
-            
-            // Add to kill feed
-            addKillFeed(state.playerId, id);
-            
-            // Show kill message
-            showGameMessage(`You killed ${id}!`);
-            
-            // Respawn the mock player
-            respawnMockPlayer(id);
-        }
-
-        function respawnMockPlayer(id) {
-            // Reset health
-            mockNetwork.otherPlayers[id].health = 100;
-            
-            // Randomize position
-            const x = (Math.random() - 0.5) * 40;
-            const z = (Math.random() - 0.5) * 40;
-            mockNetwork.otherPlayers[id].position = { x, y: 1, z };
-            
-            // Update mesh
-            const playerMesh = state.players[id];
-            if (playerMesh) {
-                playerMesh.position.set(x, 1, z);
-            }
-        }
-
-        function addKillFeed(killerId, victimId) {
-            const killFeed = document.getElementById('killFeed');
-            const killEntry = document.createElement('div');
-            
-            // Format: Killer -> Victim
-            killEntry.textContent = `${killerId} ☠ ${victimId}`;
-            killEntry.style.color = '#ff9';
-            killEntry.style.marginBottom = '5px';
-            
-            // Add to kill feed
-            killFeed.appendChild(killEntry);
-            
-            // Remove after a few seconds
-            setTimeout(() => {
-                killFeed.removeChild(killEntry);
-            }, 5000);
-        }
-
-        function showGameMessage(message) {
-            const messagesDiv = document.getElementById('gameMessages');
-            messagesDiv.textContent = message;
-            
-            // Clear after a few seconds
-            setTimeout(() => {
-                messagesDiv.textContent = '';
-            }, 3000);
-        }
-
-        // Collision Detection
-        function setupCollisionDetection() {
-            try {
-                // Store obstacle colliders
-                state.map.obstacles = obstacles.map(obstacle => {
-                    const boundingBox = new THREE.Box3().setFromObject(obstacle);
-                    const size = new THREE.Vector3();
-                    boundingBox.getSize(size);
-                    
-                    return {
-                        mesh: obstacle,
-                        min: boundingBox.min,
-                        max: boundingBox.max,
-                        size: size
-                    };
-                });
-                
-                console.log("Collision detection set up with " + state.map.obstacles.length + " obstacles");
-            } catch (error) {
-                console.error("Error setting up collision detection:", error);
-                state.map.obstacles = []; // Initialize to empty array on error
-            }
-        }
-
-        function checkCollisions(position, radius = 0.4) {
-            // First, check map boundaries
-            if (position.x - radius < state.map.bounds.minX || 
-                position.x + radius > state.map.bounds.maxX ||
-                position.z - radius < state.map.bounds.minZ || 
-                position.z + radius > state.map.bounds.maxZ) {
-                return true; // Colliding with boundary
-            }
-            
-            // Only check collisions with obstacles if we have them set up
-            if (!state.map.obstacles || state.map.obstacles.length === 0) {
-                return false;
-            }
-            
-            // Check collisions with obstacles
-            for (const obstacle of state.map.obstacles) {
-                // Make sure obstacle has the properties we need
-                if (!obstacle.min || !obstacle.max) continue;
-                
-                // Simple AABB collision
-                if (position.x + radius > obstacle.min.x && 
-                    position.x - radius < obstacle.max.x &&
-                    position.z + radius > obstacle.min.z && 
-                    position.z - radius < obstacle.max.z) {
-                    return true; // Colliding
-                }
-            }
-            
-            return false; // Not colliding
-        }
-
-        // Enhanced environment
-        function enhanceEnvironment() {
-            // Add skybox
-            const skyboxGeometry = new THREE.BoxGeometry(500, 500, 500);
-            const skyboxMaterials = [
-                new THREE.MeshBasicMaterial({ color: 0x88CCFF, side: THREE.BackSide }), // right
-                new THREE.MeshBasicMaterial({ color: 0x88CCFF, side: THREE.BackSide }), // left
-                new THREE.MeshBasicMaterial({ color: 0x99DDFF, side: THREE.BackSide }), // top
-                new THREE.MeshBasicMaterial({ color: 0x88AA66, side: THREE.BackSide }), // bottom
-                new THREE.MeshBasicMaterial({ color: 0x88CCFF, side: THREE.BackSide }), // front
-                new THREE.MeshBasicMaterial({ color: 0x88CCFF, side: THREE.BackSide })  // back
-            ];
-            const skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterials);
-            scene.add(skybox);
-            
-            // Add fog for atmosphere
-            scene.fog = new THREE.Fog(0x88CCFF, 20, 60);
-        }
-
-        // Game loop
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // Debug movement state
-            if (keys.forward || keys.backward || keys.left || keys.right) {
-                console.log("Movement keys active:", keys);
-            }
-            
-            // Handle player movement
-            if (playerMesh) { // Removed isPointerLocked check to allow movement testing
-                const direction = new THREE.Vector3();
-                
-                // Forward/backward movement
-                if (keys.forward) {
-                    direction.z -= moveSpeed;
-                }
-                if (keys.backward) {
-                    direction.z += moveSpeed;
-                }
-                
-                // Left/right strafing
-                if (keys.left) {
-                    direction.x -= moveSpeed;
-                }
-                if (keys.right) {
-                    direction.x += moveSpeed;
-                }
-                
-                // Apply player rotation to movement direction
-                direction.applyEuler(new THREE.Euler(0, playerMesh.rotation.y, 0));
-                
-                // Normalize direction vector and apply move speed
-                if (direction.length() > 0) {
-                    direction.normalize().multiplyScalar(moveSpeed);
-                }
-
-                // Calculate new position
-                const newPosition = new THREE.Vector3().copy(playerMesh.position).add(direction);
-                
-                // Check for collisions before moving
-                if (!checkCollisions(newPosition)) {
-                    playerMesh.position.copy(newPosition);
-                    console.log("Moving to:", newPosition);
-                }
-
-                // Keep player within boundaries
-                const bounds = state.map.bounds;
-                playerMesh.position.x = Math.max(bounds.minX + 0.5, Math.min(bounds.maxX - 0.5, playerMesh.position.x));
-                playerMesh.position.z = Math.max(bounds.minZ + 0.5, Math.min(bounds.maxZ - 0.5, playerMesh.position.z));
-                
-                // Update camera position to follow player
-                camera.position.copy(playerMesh.position);
-                camera.position.y = 1.6; // Eye level
-                
-                // Apply player rotation to camera
-                camera.quaternion.copy(playerMesh.quaternion);
-            }
-            
-            // Update network state periodically
-            const now = Date.now();
-            if (now - state.lastUpdate > state.networkUpdateRate) {
-                if (socket && playerMesh) {
-                    socket.emit('playerUpdate', {
-                        id: state.playerId,
-                        position: playerMesh.position,
-                        rotation: playerMesh.rotation,
-                        health: state.health
-                    });
-                }
-                state.lastUpdate = now;
-                
-                // Update players display
-                updatePlayersHUD();
-            }
-            
-            // Update debug info
-            updateDebugInfo();
-            
-            renderer.render(scene, camera);
-        }
-
-        // Update debug information
-        function updateDebugInfo() {
-            const debugDiv = document.getElementById('debugInfo');
-            if (debugDiv && playerMesh) {
-                const pos = playerMesh.position;
-                debugDiv.innerHTML = `Position: X:${pos.x.toFixed(2)}, Y:${pos.y.toFixed(2)}, Z:${pos.z.toFixed(2)}<br>` +
-                                     `Health: ${state.health}<br>` +
-                                     `Ammo: ${state.weapons[state.currentWeapon].ammo}/${state.weapons[state.currentWeapon].maxAmmo}<br>` +
-                                     `Kills: ${state.kills} / Deaths: ${state.deaths}`;
-            }
-        }
-
-        // Update HUD with player information
-        function updatePlayersHUD() {
-            const playersDiv = document.getElementById('players');
-            let html = '<h3>Players</h3>';
-            
-            // Add local player
-            html += `<div>You (${state.playerId}): Health ${state.health}</div>`;
-            
-            // Add mock players
-            Object.keys(mockNetwork.otherPlayers).forEach(id => {
-                const player = mockNetwork.otherPlayers[id];
-                html += `<div>${id}: Health ${player.health}</div>`;
-            });
-            
-            playersDiv.innerHTML = html;
+            scene.add(group);
+            playerMeshes[id] = group;
+            return group;
         }
         
         // Handle window resize
-        window.addEventListener('resize', () => {
+        function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // Initialize the game
-        function initGame() {
-            console.log("Initializing game...");
-            
-            // Create player and connect to network
-            playerMesh = createPlayerMesh(state.playerId || 'local_player', 0, 1, 0);
-            socket = mockNetwork.connect();
-            
-            // Initialize all systems
-            initSfx();
-            setupCollisionDetection();
-            enhanceEnvironment();
-            updateAmmoDisplay();
-            updateHealthBar();
-            
-            console.log("Game initialized!");
-            showGameMessage("Game initialized! Click to play.");
+            renderer.setPixelRatio(window.devicePixelRatio);
         }
-
-        // Start the game when the page is loaded
-        window.onload = function() {
-            initGame();
-            animate();
+        
+        // Keyboard controls
+        function onKeyDown(event) {
+            switch (event.code) {
+                case 'KeyW':
+                    moveForward = true;
+                    break;
+                case 'KeyS':
+                    moveBackward = true;
+                    break;
+                case 'KeyA':
+                    moveLeft = true;
+                    break;
+                case 'KeyD':
+                    moveRight = true;
+                    break;
+                case 'Space':
+                    if (velocity.y === 0) velocity.y = 10;
+                    break;
+            }
+        }
+        
+        function onKeyUp(event) {
+            switch (event.code) {
+                case 'KeyW':
+                    moveForward = false;
+                    break;
+                case 'KeyS':
+                    moveBackward = false;
+                    break;
+                case 'KeyA':
+                    moveLeft = false;
+                    break;
+                case 'KeyD':
+                    moveRight = false;
+                    break;
+            }
+        }
+        
+        // Sensitivity settings
+        const mouseSensitivity = 3.0;
+        let pitchObject, yawObject;
+        
+        // Set up camera rig for better controls
+        function setupCameraControls() {
+            // Create a camera rig with separate pitch and yaw objects
+            pitchObject = new THREE.Object3D();
+            camera.position.set(0, 0, 0); // Camera at center of rotation
+            pitchObject.add(camera);
+            
+            yawObject = new THREE.Object3D();
+            yawObject.position.y = playerHeight;
+            yawObject.add(pitchObject);
+            
+            scene.add(yawObject);
+        }
+        
+        // Mouse movement for camera control
+        function onMouseMove(event) {
+            if (document.pointerLockElement === renderer.domElement) {
+                const movementX = event.movementX || 0;
+                const movementY = event.movementY || 0;
+                
+                // Apply sensitivity and update rotation
+                yawObject.rotation.y -= movementX * 0.002 * (mouseSensitivity / 10);
+                pitchObject.rotation.x -= movementY * 0.002 * (mouseSensitivity / 10);
+                
+                // Limit vertical camera rotation
+                pitchObject.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchObject.rotation.x));
+                
+                // Smoother rotation by not sending every single update
+                // Updates will be sent in the animation loop at a controlled rate
+            }
+        }
+        
+        // Mouse click for shooting
+        function onMouseClick() {
+            if (document.pointerLockElement === renderer.domElement) {
+                // Simulate shooting
+                // For a simple game, we'll just log this
+                console.log("Shot fired!");
+                
+                // In a more complex game, you would implement actual shooting mechanics here
+            }
+        }
+        
+        // Clock for consistent timing
+        const clock = new THREE.Clock();
+        let lastUpdateTime = 0;
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Get delta time
+            const delta = Math.min(clock.getDelta(), 0.1); // Cap delta to avoid huge jumps
+            
+            // Update player movement
+            if (document.pointerLockElement === renderer.domElement) {
+                // Apply gravity
+                velocity.y -= 20.0 * delta; // Increased gravity for better feel
+                
+                // Get camera direction
+                const cameraDirection = new THREE.Vector3();
+                camera.getWorldDirection(cameraDirection);
+                
+                // Calculate movement direction relative to camera orientation
+                direction.set(0, 0, 0);
+                
+                if (moveForward) {
+                    direction.z = -1;
+                } else if (moveBackward) {
+                    direction.z = 1;
+                }
+                
+                if (moveLeft) {
+                    direction.x = -1;
+                } else if (moveRight) {
+                    direction.x = 1;
+                }
+                
+                // Normalize if moving diagonally
+                if (direction.length() > 1) {
+                    direction.normalize();
+                }
+                
+                // Convert direction from camera space to world space
+                const movementSpeed = 5.0;
+                const rotationMatrix = new THREE.Matrix4();
+                rotationMatrix.makeRotationY(camera.rotation.y);
+                direction.applyMatrix4(rotationMatrix);
+                
+                // Update velocity with smoother acceleration
+                velocity.x = direction.x * movementSpeed * delta * 10;
+                velocity.z = direction.z * movementSpeed * delta * 10;
+                
+                // Move player
+                yawObject.position.x += velocity.x;
+                yawObject.position.y += velocity.y * delta;
+                yawObject.position.z += velocity.z;
+                
+                // Ground collision
+                if (yawObject.position.y < playerHeight) {
+                    velocity.y = 0;
+                    yawObject.position.y = playerHeight;
+                }
+                
+                // Send position update to other players (limit frequency)
+                const currentTime = performance.now();
+                if (currentTime - lastUpdateTime > 50) { // 20 updates per second
+                    sendPlayerUpdate();
+                    lastUpdateTime = currentTime;
+                }
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Multiplayer setup with PeerJS
+        function initMultiplayer() {
+            // Generate a random ID for this player
+            myId = Math.random().toString(36).substr(2, 9);
+            
+            // Initialize PeerJS
+            peer = new Peer(myId);
+            
+            // Set up event handlers
+            peer.on('open', (id) => {
+                console.log('My peer ID is: ' + id);
+                myId = id;
+                
+                // Assign a random color to this player
+                playerColors[myId] = Math.random() * 0xffffff;
+            });
+            
+            peer.on('connection', (conn) => {
+                handleConnection(conn);
+            });
+            
+            peer.on('error', (err) => {
+                console.error('PeerJS error:', err);
+                alert('Connection error: ' + err);
+            });
+        }
+        
+        // Host a new game
+        function hostGame() {
+            isHost = true;
+            
+            // Generate a simple room code
+            const roomCode = Math.floor(10000 + Math.random() * 90000).toString();
+            roomCodeSpan.textContent = roomCode;
+            roomCodeDisplay.style.display = 'block';
+            
+            // Store our peer ID with this room code to allow others to join
+            localStorage.setItem('room_' + roomCode, myId);
+            
+            // Keep the room code visible for at least 3 seconds before starting
+            setTimeout(() => {
+                // Hide menu and show game
+                startGame();
+            }, 3000);
+        }
+        
+        // Join an existing game
+        function joinGame() {
+            const roomCode = joinCodeInput.value.trim();
+            
+            if (!roomCode) {
+                alert('Please enter a room code');
+                return;
+            }
+            
+            // Get host peer ID from room code
+            const hostId = localStorage.getItem('room_' + roomCode);
+            
+            if (!hostId) {
+                alert('Invalid room code');
+                return;
+            }
+            
+            // Connect to host
+            const conn = peer.connect(hostId);
+            hostConnection = conn;
+            
+            handleConnection(conn);
+            
+            // Hide menu and show game
+            startGame();
+        }
+        
+        // Handle new peer connection
+        function handleConnection(conn) {
+            connections[conn.peer] = conn;
+            
+            // Create a new player mesh for this connection
+            const color = Math.random() * 0xffffff;
+            playerColors[conn.peer] = color;
+            createPlayerMesh(conn.peer, color);
+            
+            // Set up connection event handlers
+            conn.on('open', () => {
+                console.log('Connected to peer: ' + conn.peer);
+                
+                // If we're the host, send the current player list to the new player
+                if (isHost) {
+                    conn.send({
+                        type: 'init',
+                        players: Object.keys(connections).concat(myId),
+                        colors: playerColors
+                    });
+                    
+                    // Notify other players about the new player
+                    for (const peerId in connections) {
+                        if (peerId !== conn.peer) {
+                            connections[peerId].send({
+                                type: 'new-player',
+                                id: conn.peer,
+                                color: playerColors[conn.peer]
+                            });
+                        }
+                    }
+                }
+                
+                // Send initial position
+                sendPlayerUpdate();
+                
+                // Update the players list UI
+                updatePlayersList();
+            });
+            
+            conn.on('data', (data) => {
+                handlePeerData(conn.peer, data);
+            });
+            
+            conn.on('close', () => {
+                console.log('Connection closed: ' + conn.peer);
+                
+                // Remove player
+                if (playerMeshes[conn.peer]) {
+                    scene.remove(playerMeshes[conn.peer]);
+                    delete playerMeshes[conn.peer];
+                }
+                
+                delete connections[conn.peer];
+                
+                // Notify other players if we're the host
+                if (isHost) {
+                    for (const peerId in connections) {
+                        connections[peerId].send({
+                            type: 'player-left',
+                            id: conn.peer
+                        });
+                    }
+                }
+                
+                // Update the players list UI
+                updatePlayersList();
+            });
+        }
+        
+        // Handle data received from peers
+        function handlePeerData(peerId, data) {
+            if (data.type === 'position') {
+                // Update player position
+                if (playerMeshes[peerId]) {
+                    playerMeshes[peerId].position.x = data.x;
+                    playerMeshes[peerId].position.y = data.y - 1.8; // Adjust for player height
+                    playerMeshes[peerId].position.z = data.z;
+                    playerMeshes[peerId].rotation.y = data.rotationY;
+                }
+            } else if (data.type === 'init') {
+                // Initialize with existing players
+                for (const id of data.players) {
+                    if (id !== myId && !playerMeshes[id]) {
+                        playerColors[id] = data.colors[id];
+                        createPlayerMesh(id, data.colors[id]);
+                    }
+                }
+                
+                // Update the players list UI
+                updatePlayersList();
+            } else if (data.type === 'new-player') {
+                // Add new player
+                if (!playerMeshes[data.id]) {
+                    playerColors[data.id] = data.color;
+                    createPlayerMesh(data.id, data.color);
+                    
+                    // Update the players list UI
+                    updatePlayersList();
+                }
+            } else if (data.type === 'player-left') {
+                // Remove player
+                if (playerMeshes[data.id]) {
+                    scene.remove(playerMeshes[data.id]);
+                    delete playerMeshes[data.id];
+                    
+                    // Update the players list UI
+                    updatePlayersList();
+                }
+            }
+        }
+        
+        // Send player position update to all connected peers
+        function sendPlayerUpdate() {
+            const update = {
+                type: 'position',
+                x: yawObject.position.x,
+                y: yawObject.position.y,
+                z: yawObject.position.z,
+                rotationY: yawObject.rotation.y
+            };
+            
+            for (const peerId in connections) {
+                connections[peerId].send(update);
+            }
+        }
+        
+        // Update the players list UI
+        function updatePlayersList() {
+            playersList.innerHTML = '<h3>Players:</h3>';
+            
+            // Add myself
+            const myColor = playerColors[myId] ? `#${Math.floor(playerColors[myId]).toString(16).padStart(6, '0')}` : '#ff0000';
+            playersList.innerHTML += `<div style="color: ${myColor}">You (${isHost ? 'Host' : 'Player'})</div>`;
+            
+            // Add other players
+            for (const peerId in connections) {
+                const color = playerColors[peerId] ? `#${Math.floor(playerColors[peerId]).toString(16).padStart(6, '0')}` : '#ff0000';
+                playersList.innerHTML += `<div style="color: ${color}">Player ${peerId.substr(0, 4)}</div>`;
+            }
+        }
+        
+        // Start the game
+        function startGame() {
+            menu.style.display = 'none';
+            gameUI.style.display = 'block';
+            initScene();
+        }
+        
+        // Initialize multiplayer when page loads
+        window.onload = () => {
+            initMultiplayer();
+            
+            // Set up button event listeners
+            hostBtn.addEventListener('click', hostGame);
+            joinBtn.addEventListener('click', joinGame);
         };
     </script>
 </body>
